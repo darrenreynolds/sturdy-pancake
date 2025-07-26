@@ -14,4 +14,4 @@ This repository contains a small web demo that animates epicycles extracted from
 ## Usage
 
 1. Click **Browse** to select an SVG file from your computer. Make sure the file contains at least one `<path>` element.
-2. Press **Play** to start the animation. After the trace finishes you can press **Play** again to replay it.
+2. Press **Play** to start the animation. After the trace finishes you can press **Play** again to replay it. When the trace jumps between distant points the line fades to show the gap.

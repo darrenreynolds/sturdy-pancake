@@ -22,6 +22,7 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let fourier = [];
 let pathPoints = [];
+let maxSegmentDist = 1;
 let animId = null;
 let t = 0;
 const DRAW_STEPS = 500; // number of frames per cycle
@@ -71,6 +72,12 @@ svgInput.addEventListener('change', async (e) => {
     re: (p.x - offsetX) * scale,
     im: (p.y - offsetY) * scale
   }));
+  // determine the largest gap between successive points
+  maxSegmentDist = 1;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = Math.hypot(pts[i+1].re - pts[i].re, pts[i+1].im - pts[i].im);
+    if (d > maxSegmentDist) maxSegmentDist = d;
+  }
   fourier = dft(pts);
   t = 0;
   playBtn.disabled = false;
@@ -107,13 +114,17 @@ function animate() {
     ctx.stroke();
   }
   drawPath.push({x: vx, y: vy});
-  ctx.beginPath();
-  ctx.strokeStyle = 'red';
   for (let i = 0; i < drawPath.length - 1; i++) {
-    ctx.moveTo(drawPath[i].x, drawPath[i].y);
-    ctx.lineTo(drawPath[i+1].x, drawPath[i+1].y);
+    const p1 = drawPath[i];
+    const p2 = drawPath[i + 1];
+    const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    const intensity = Math.max(0.1, 1 - dist / maxSegmentDist);
+    ctx.strokeStyle = `rgba(255,0,0,${intensity})`;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
   }
-  ctx.stroke();
   // advance time by one frame worth of angle
   const dt = (2 * Math.PI) / DRAW_STEPS;
   t += dt;
