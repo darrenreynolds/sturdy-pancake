@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVG Epicycles Demo</title>
+<style>
+  body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+  canvas { border: 1px solid #ccc; margin-top: 20px; }
+</style>
+</head>
+<body>
+<h1>SVG Epicycles Demo</h1>
+<input type="file" id="svgInput" accept="image/svg+xml">
+<button id="playBtn" disabled>Play</button>
+<canvas id="canvas" width="800" height="600"></canvas>
+
+<script>
+const svgInput = document.getElementById('svgInput');
+const playBtn = document.getElementById('playBtn');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let fourier = [];
+let pathPoints = [];
+let animId = null;
+let t = 0;
+const DRAW_STEPS = 500; // number of frames per cycle
+
+svgInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const text = await file.text();
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, 'image/svg+xml');
+  const paths = doc.querySelectorAll('path');
+  if (!paths.length) {
+    alert('SVG does not contain a path.');
+    return;
+  }
+  // Create hidden SVG to use getPointAtLength
+  const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  document.body.appendChild(tempSvg);
+  pathPoints = [];
+  paths.forEach(p => {
+    const tempPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    tempPath.setAttribute('d', p.getAttribute('d'));
+    tempSvg.appendChild(tempPath);
+    const length = tempPath.getTotalLength();
+    for (let i = 0; i < DRAW_STEPS; i++) {
+      const pt = tempPath.getPointAtLength((i / DRAW_STEPS) * length);
+      pathPoints.push({ x: pt.x, y: pt.y });
+    }
+    tempSvg.removeChild(tempPath);
+  });
+  document.body.removeChild(tempSvg);
+  // center shape on canvas
+  const bounds = pathPoints.reduce((acc, p) => {
+    acc.minX = Math.min(acc.minX, p.x);
+    acc.maxX = Math.max(acc.maxX, p.x);
+    acc.minY = Math.min(acc.minY, p.y);
+    acc.maxY = Math.max(acc.maxY, p.y);
+    return acc;
+  }, {minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity});
+  const offsetX = (bounds.minX + bounds.maxX) / 2;
+  const offsetY = (bounds.minY + bounds.maxY) / 2;
+  const scale = 0.9 * Math.min(
+    canvas.width / (bounds.maxX - bounds.minX),
+    canvas.height / (bounds.maxY - bounds.minY)
+  );
+  const pts = pathPoints.map(p => ({
+    re: (p.x - offsetX) * scale,
+    im: (p.y - offsetY) * scale
+  }));
+  fourier = dft(pts);
+  t = 0;
+  playBtn.disabled = false;
+});
+
+playBtn.addEventListener('click', () => {
+  if (animId) {
+    cancelAnimationFrame(animId);
+  }
+  t = 0;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawPath = [];
+  animate();
+});
+
+let drawPath = [];
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  let vx = canvas.width / 2;
+  let vy = canvas.height / 2;
+  for (const f of fourier) {
+    const prevX = vx;
+    const prevY = vy;
+    const angle = f.freq * t + f.phase;
+    vx += f.amplitude * Math.cos(angle);
+    vy += f.amplitude * Math.sin(angle);
+    ctx.beginPath();
+    ctx.strokeStyle = '#aaa';
+    ctx.arc(prevX, prevY, f.amplitude, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(prevX, prevY);
+    ctx.lineTo(vx, vy);
+    ctx.stroke();
+  }
+  drawPath.push({x: vx, y: vy});
+  ctx.beginPath();
+  ctx.strokeStyle = 'red';
+  for (let i = 0; i < drawPath.length - 1; i++) {
+    ctx.moveTo(drawPath[i].x, drawPath[i].y);
+    ctx.lineTo(drawPath[i+1].x, drawPath[i+1].y);
+  }
+  ctx.stroke();
+  // advance time by one frame worth of angle
+  const dt = (2 * Math.PI) / DRAW_STEPS;
+  t += dt;
+  if (t > 2 * Math.PI) {
+    cancelAnimationFrame(animId);
+    animId = null;
+    return;
+  }
+  animId = requestAnimationFrame(animate);
+}
+
+function dft(pts) {
+  const N = pts.length;
+  const X = [];
+  for (let k = 0; k < N; k++) {
+    let re = 0;
+    let im = 0;
+    for (let n = 0; n < N; n++) {
+      const phi = (2 * Math.PI * k * n) / N;
+      re += pts[n].re * Math.cos(phi) + pts[n].im * Math.sin(phi);
+      im += -pts[n].re * Math.sin(phi) + pts[n].im * Math.cos(phi);
+    }
+    re = re / N;
+    im = im / N;
+    // shift frequency range so zero frequency sits in the middle
+    const freq = k - Math.floor(N / 2);
+    X[k] = {
+      re,
+      im,
+      freq,
+      amplitude: Math.hypot(re, im),
+      phase: Math.atan2(im, re)
+    };
+  }
+  X.sort((a, b) => b.amplitude - a.amplitude);
+  return X;
+}
+</script>
+</body>
+</html>
